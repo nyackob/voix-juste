@@ -9,7 +9,7 @@
 // c'est ce qui permet de suivre un fa2 ou un mi2 là où beaucoup d'applis décrochent.
 
 export class YIN {
-  constructor(sampleRate, { fmin = 60, fmax = 1000, threshold = 0.15 } = {}) {
+  constructor(sampleRate, { fmin = 60, fmax = 1000, threshold = 0.12 } = {}) {
     this.sr = sampleRate;
     this.threshold = threshold;
     this.tauMin = Math.max(2, Math.floor(sampleRate / fmax));
@@ -37,27 +37,27 @@ export class YIN {
       d[tau] = running > 0 ? (s * tau) / running : 1;
     }
 
-    let tau = -1;
+    // creux candidats : minima locaux de d' (on garde aussi leur profondeur)
+    const cands = [];
     for (let t = tauMin; t <= tauMax; t++) {
-      if (d[t] < this.threshold) {
-        while (t + 1 <= tauMax && d[t + 1] < d[t]) t++;
-        tau = t; break;
-      }
+      if (d[t] < 0.5 && d[t] <= d[t - 1] && d[t] < d[t + 1]) cands.push({ tau: this.refine(t), d: d[t] });
     }
-    if (tau < 0) { // pas de creux sous le seuil : minimum global, accepté s'il reste assez net
-      let best = tauMin;
-      for (let t = tauMin + 1; t <= tauMax; t++) if (d[t] < d[best]) best = t;
-      if (d[best] > 0.3) return { f0: null, clarity: 1 - d[best], rms };
-      tau = best;
+    if (!cands.length) return { f0: null, clarity: 0, rms, cands };
+    // règle YIN : le premier creux sous le seuil, sinon le plus profond s'il reste assez net
+    let pick = cands.find((c) => c.d < this.threshold);
+    if (!pick) {
+      pick = cands.reduce((a, b) => (b.d < a.d ? b : a));
+      if (pick.d > 0.3) return { f0: null, clarity: 1 - pick.d, rms, cands };
     }
+    return { f0: this.sr / pick.tau, clarity: 1 - pick.d, rms, cands };
+  }
 
-    let better = tau;
-    if (tau > 1 && tau < tauMax + 1) {
-      const a = d[tau - 1], b = d[tau], c = d[tau + 1];
-      const den = a - 2 * b + c;
-      if (den !== 0) better = tau + (a - c) / (2 * den);
-    }
-    return { f0: this.sr / better, clarity: 1 - d[tau], rms };
+  refine(t) { // interpolation parabolique autour du creux
+    const d = this.d;
+    if (t < 1 || t > this.tauMax) return t;
+    const a = d[t - 1], b = d[t], c = d[t + 1];
+    const den = a - 2 * b + c;
+    return den !== 0 ? t + (a - c) / (2 * den) : t;
   }
 }
 
@@ -79,29 +79,40 @@ class Decimator {
 
 // Suivi continu : on pousse des blocs audio, on récupère des trames {frame, f0, midi, clarity, db}.
 // `frame` est l'indice (à la fréquence native) du centre de la fenêtre analysée.
+//
+// Trois protections contre les sauts :
+//  - continuité : si un autre creux YIN presque aussi net est proche de la note qu'on suivait, on le préfère
+//    pendant au plus 80 ms (c'est ce qui évite de sauter sur une harmonique de la voix) ;
+//  - hystérésis : un saut de plus de 3 demi-tons n'est accepté que s'il dure 40 ms ;
+//  - seuil adaptatif : le seuil de détection suit le bruit de fond de la pièce (+12 dB).
 export class PitchTracker {
-  constructor(sampleRate, { fmin = 60, fmax = 1000, threshold = 0.15, gateDb = -50, hopMs = 10 } = {}) {
+  constructor(sampleRate, { fmin = 60, fmax = 1000, threshold = 0.12, gateDb = -65, hopMs = 10 } = {}) {
     this.native = sampleRate;
     this.factor = sampleRate >= 32000 ? 2 : 1;
     this.sr = sampleRate / this.factor;
     this.yin = new YIN(this.sr, { fmin, fmax, threshold });
     this.gateDb = gateDb;
+    this.noise = -60;
     this.hop = Math.round((this.sr * hopMs) / 1000);
     this.buf = new Float32Array(this.yin.size + 8192);
     this.len = 0;
     this.sinceHop = 0;
     this.decim = this.factor === 2 ? new Decimator() : null;
-    this.totalOut = 0; // nombre d'échantillons décimés reçus
+    this.totalOut = 0;
     this.firstFrame = null;
     this.hist = [];
     this.a4 = 440;
+    this.track = null;   // hauteur suivie (MIDI)
+    this.trackAge = 99;  // trames depuis la dernière trame acceptée
+    this.pending = [];
+    this.overrideRun = 0;
   }
   push(chunk, startFrame) {
     if (this.firstFrame === null) this.firstFrame = startFrame;
     const data = this.decim ? this.decim.process(chunk) : chunk;
     const out = [];
     for (let i = 0; i < data.length; i++) {
-      if (this.len === this.buf.length) { // on garde seulement la fin du tampon
+      if (this.len === this.buf.length) {
         const keep = this.yin.size;
         this.buf.copyWithin(0, this.len - keep, this.len);
         this.len = keep;
@@ -115,20 +126,52 @@ export class PitchTracker {
     }
     return out;
   }
+  toMidi(f) { return 69 + 12 * Math.log2(f / this.a4); }
   analyse() {
     const r = this.yin.detect(this.buf, this.len - this.yin.size);
     const db = 20 * Math.log10(r.rms + 1e-12);
-    let midi = null;
-    if (r.f0 && db > this.gateDb) midi = 69 + 12 * Math.log2(r.f0 / this.a4);
-    // médiane sur 3 trames voisées pour supprimer les sauts isolés
+    // bruit de fond : descend vite, remonte lentement (≈ 1 dB par seconde)
+    if (db < this.noise) this.noise = db; else this.noise = Math.min(db, this.noise + 0.01);
+    const gate = Math.max(this.gateDb, this.noise + 12);
+    let raw = null;
+    if (r.f0 && db > gate) {
+      raw = this.toMidi(r.f0);
+      const recent = this.track !== null && this.trackAge < 15;
+      if (recent && Math.abs(raw - this.track) > 2.5 && r.cands) {
+        const pickD = 1 - r.clarity;
+        let best = null;
+        for (const c of r.cands) {
+          if (c.d > pickD + 0.15) continue;
+          const m = this.toMidi(this.yin.sr / c.tau);
+          if (Math.abs(m - this.track) <= 2 && (!best || Math.abs(m - this.track) < Math.abs(best - this.track))) best = m;
+        }
+        // on ne force la continuité que brièvement (80 ms) : au-delà, c'est un vrai changement de note
+        // et le compteur ne repart à zéro que quand le détecteur retombe de lui-même sur la note suivie
+        if (best !== null && this.overrideRun < 8) { raw = best; this.overrideRun++; }
+      } else if (!recent || Math.abs(raw - this.track) <= 2.5) this.overrideRun = 0;
+    }
+    const midi = this.gateFrame(raw);
     this.hist.push(midi);
     if (this.hist.length > 3) this.hist.shift();
     let smooth = midi;
-    if (midi !== null && this.hist.length === 3 && this.hist.every((v) => v !== null)) {
-      smooth = [...this.hist].sort((a, b) => a - b)[1];
-    }
+    if (midi !== null && this.hist.length === 3 && this.hist.every((v) => v !== null)) smooth = [...this.hist].sort((a, b) => a - b)[1];
     const centerOut = this.totalOut - this.yin.size / 2;
     const frame = this.firstFrame + centerOut * this.factor;
-    return { frame, f0: midi === null ? null : r.f0, midi: smooth, clarity: r.clarity, db };
+    return { frame, f0: smooth === null ? null : this.a4 * 2 ** ((smooth - 69) / 12), midi: smooth, clarity: r.clarity, db };
+  }
+  gateFrame(m) {
+    this.trackAge++;
+    if (m === null) { this.pending = []; return null; }
+    if (this.track !== null && this.trackAge < 15 && Math.abs(m - this.track) <= 3) {
+      this.track = m; this.trackAge = 0; this.pending = []; return m;
+    }
+    // saut ou début de note : on attend 4 trames cohérentes (40 ms)
+    this.pending.push(m);
+    if (this.pending.length > 4) this.pending.shift();
+    if (this.pending.length === 4) {
+      const lo = Math.min(...this.pending), hi = Math.max(...this.pending);
+      if (hi - lo < 1) { this.track = m; this.trackAge = 0; this.pending = []; return m; }
+    }
+    return null;
   }
 }

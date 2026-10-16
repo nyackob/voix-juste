@@ -110,11 +110,11 @@ export class Roll {
       if (f.b < bMin - 1 || f.b > bMax) { prev = null; continue; }
       if (f.m === null) { prev = null; continue; }
       const x = xOf(f.b), y = yOf(f.m);
-      if (prev && f.b - prev.b < 0.25 && x >= gx) {
+      if (prev && f.b - prev.b < 0.25 && Math.abs(f.m - prev.m) < 3 && x >= gx) {
         g.strokeStyle = f.c == null ? C.voice : Math.abs(f.c) <= 25 ? C.good : Math.abs(f.c) <= 50 ? C.warn : C.bad;
         g.beginPath(); g.moveTo(prev.x, prev.y); g.lineTo(x, y); g.stroke();
       }
-      prev = { x, y, b: f.b };
+      prev = { x, y, b: f.b, m: f.m };
     }
     // flèche si la voix sort du cadre
     const lastF = fr.length ? fr[fr.length - 1] : null;

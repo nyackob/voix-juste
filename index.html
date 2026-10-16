@@ -178,10 +178,10 @@
       <div class="field"><label for="st-flats">Altérations</label><select id="st-flats"><option value="0">dièses (la♯)</option><option value="1">bémols (si♭)</option></select></div>
       <div class="field"><label for="st-a4">Diapason la4 (Hz)</label><input id="st-a4" type="number" min="415" max="466" step="1"></div>
       <div class="field"><label for="st-fmin">Note la plus grave détectée (Hz)</label><input id="st-fmin" type="number" min="40" max="120" step="1"></div>
-      <div class="field"><label for="st-gate">Seuil du micro (dB)</label><input id="st-gate" type="number" min="-80" max="-20" step="1"></div>
+      <div class="field"><label for="st-gate">Seuil minimal du micro (dB)</label><input id="st-gate" type="number" min="-80" max="-20" step="1"></div>
       <div class="field"><label for="st-lat">Compensation de latence (ms)</label><input id="st-lat" type="number" min="0" max="300" step="5"></div>
     </div>
-    <p class="muted small">Les octaves suivent la notation scientifique, où le la du diapason à 440 Hz s'appelle la4 (certains livres français l'appellent la3). Baisse le seuil du micro si ta voix n'est pas détectée quand tu chantes doucement, monte-le si l'app trace du bruit dans les silences.</p>
+    <p class="muted small">Les octaves suivent la notation scientifique, où le la du diapason à 440 Hz s'appelle la4 (certains livres français l'appellent la3). Le seuil de détection suit tout seul le bruit de la pièce. Le seuil minimal ne sert que si l'app trace encore du bruit dans les silences : monte-le alors vers −50.</p>
   </div>
   <div class="panel">
     <h3>Sauvegarde</h3>

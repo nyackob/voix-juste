@@ -11,7 +11,7 @@ import {
 
 // ---------- état ----------
 const DEFAULT_PROFILE = { chestLow: 41, chestHigh: 62, headLow: 53, headHigh: 72, passageLow: 63, passageHigh: 65, comfortLow: 45, comfortHigh: 60 };
-const DEFAULT_SETTINGS = { naming: 'fr', flats: false, a4: 440, fmin: 60, gateDb: -45, latencyMs: 0 };
+const DEFAULT_SETTINGS = { naming: 'fr', flats: false, a4: 440, fmin: 60, gateDb: -60, latencyMs: 0, v: 2 };
 const S = {
   scores: [], profile: { ...DEFAULT_PROFILE }, settings: { ...DEFAULT_SETTINGS }, prefs: {},
   current: null, mode: 'free', tab: 'library', tagFilter: null,
@@ -57,6 +57,13 @@ function twoStep(btn, label, fn) { // confirmation intégrée : un 2e clic confi
 async function boot() {
   S.profile = { ...DEFAULT_PROFILE, ...(await db.kvGet('profile', {})) };
   S.settings = { ...DEFAULT_SETTINGS, ...(await db.kvGet('settings', {})) };
+  if (S.settings.v !== 2) { S.settings.gateDb = -60; S.settings.v = 2; await db.kvSet('settings', S.settings); } // le seuil est maintenant adaptatif
+  engine.onStall = () => {
+    const wasRunning = !!run;
+    if (run) stopRun();
+    if (rangeTest) stopRangeTest();
+    toast(wasRunning ? "Le micro s'est coupé (souvent quand une autre app ou un appel prend le son). Relance la prise." : "Le micro s'est coupé. Il se rouvrira à la prochaine prise.", 6000);
+  };
   S.prefs = await db.kvGet('prefs', {});
   applySettings();
   await loadScores();

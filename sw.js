@@ -1,5 +1,5 @@
 // Fonctionnement hors ligne : on garde une copie de l'app, et on prend la version du réseau quand il y en a une.
-const CACHE = 'voix-juste-v1';
+const CACHE = 'voix-juste-v2';
 const FILES = ['./', 'index.html', 'style.css', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
   'js/app.js', 'js/audio.js', 'js/capture-worklet.js', 'js/db.js', 'js/importers.js', 'js/library.js', 'js/music.js', 'js/pitch.js', 'js/roll.js', 'js/stats.js'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)).then(() => self.skipWaiting())); });

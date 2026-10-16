@@ -9,7 +9,7 @@ export class AudioEngine {
     this.listeners = new Set();
     this.levelDb = -100;
     this.recording = null;
-    this.opts = { fmin: 60, fmax: 1000, gateDb: -45, latencyMs: 0 };
+    this.opts = { fmin: 60, fmax: 1000, gateDb: -60, latencyMs: 0 };
   }
 
   get running() { return !!this.stream; }
@@ -24,15 +24,22 @@ export class AudioEngine {
   }
 
   async start() {
-    await this.ensureContext();
-    if (this.stream) return;
+    if (this.stream) { await this.ensureContext(); return; }
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       throw new Error("Ce navigateur ne donne pas accès au micro ici. Ouvre l'app depuis http://localhost ou une adresse https.");
     }
+    // Safari (iPad, iPhone) : déclarer qu'on enregistre ET qu'on joue du son, sinon le micro peut se couper
+    try { if (navigator.audioSession) navigator.audioSession.type = 'play-and-record'; } catch (e) { /* facultatif */ }
     this.stream = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 },
     });
+    // Le contexte audio est créé APRÈS l'ouverture du micro. Sur Safari, un contexte créé avant
+    // (par exemple en touchant le clavier de l'éditeur) peut tourner à une autre fréquence que le micro
+    // et ne recevoir que du silence après quelques secondes.
+    if (this.ctx) { try { await this.ctx.close(); } catch (e) { /* déjà fermé */ } this.ctx = null; }
+    await this.ensureContext();
     const ctx = this.ctx;
+    ctx.onstatechange = () => { if (ctx.state === 'suspended' || ctx.state === 'interrupted') ctx.resume().catch(() => {}); };
     this.source = ctx.createMediaStreamSource(this.stream);
     this.makeTracker();
     const sink = ctx.createGain();
@@ -53,6 +60,29 @@ export class AudioEngine {
     }
     this.source.connect(this.node);
     this.node.connect(sink);
+    this.stream.getAudioTracks().forEach((t) => { t.onended = () => this.stall('ended'); });
+    // surveillance : si plus aucun son n'arrive, on tente de relancer, puis on prévient l'app
+    this.lastChunk = performance.now();
+    clearInterval(this.watch);
+    this.watch = setInterval(() => {
+      if (!this.stream) return;
+      const idle = performance.now() - this.lastChunk;
+      if (idle > 1200 && this.ctx.state !== 'running') this.ctx.resume().catch(() => {});
+      if (idle > 2500) this.stall('silence');
+    }, 500);
+  }
+
+  stall(reason) {
+    this.reset();
+    if (this.onStall) this.onStall(reason);
+  }
+  // coupe tout : le prochain start() repart de zéro (nouveau micro, nouveau contexte)
+  reset() {
+    clearInterval(this.watch);
+    if (this.stream) this.stream.getTracks().forEach((t) => { t.onended = null; t.stop(); });
+    try { this.source && this.source.disconnect(); this.node && this.node.disconnect(); } catch (e) { /* déjà coupé */ }
+    this.stream = null;
+    this.recording = null;
   }
 
   makeTracker() {
@@ -65,14 +95,10 @@ export class AudioEngine {
     if (this.tracker) this.makeTracker();
   }
 
-  stop() {
-    if (!this.stream) return;
-    this.stream.getTracks().forEach((t) => t.stop());
-    try { this.source.disconnect(); this.node.disconnect(); } catch (e) { /* déjà coupé */ }
-    this.stream = null;
-  }
+  stop() { this.reset(); }
 
   onChunk(data, frame) {
+    this.lastChunk = performance.now();
     const sr = this.ctx.sampleRate;
     let e = 0;
     for (let i = 0; i < data.length; i++) e += data[i] * data[i];
