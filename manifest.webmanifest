@@ -1,0 +1,16 @@
+{
+  "name": "Voix Juste",
+  "short_name": "Voix Juste",
+  "description": "Ta voix tracée en direct sur les notes à chanter, pour travailler la justesse.",
+  "lang": "fr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f3f5f8",
+  "theme_color": "#1d2a3a",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

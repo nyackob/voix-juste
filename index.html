@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Voix Juste</title>
+<meta name="description" content="Entraînement à la justesse : ta voix tracée en direct sur les notes à chanter.">
+<meta name="theme-color" content="#1d2a3a">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M3 22 Q9 22 11 16 T19 11 T29 9" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><rect x="4" y="19" width="9" height="4" rx="2" fill="currentColor" opacity=".35"/><rect x="15" y="9" width="8" height="4" rx="2" fill="currentColor" opacity=".35"/></svg><span>Voix Juste</span></div>
+  <nav class="tabs" role="tablist">
+    <button data-tab="library" class="on">Bibliothèque</button>
+    <button data-tab="practice">Pratique</button>
+    <button data-tab="takes">Prises</button>
+    <button data-tab="progress">Progrès</button>
+    <button data-tab="profile">Profil</button>
+  </nav>
+</header>
+
+<main>
+<!-- BIBLIOTHÈQUE -->
+<section id="v-library" class="view on">
+  <div class="bar">
+    <input id="lib-search" type="search" placeholder="Rechercher un titre ou une étiquette">
+    <div class="spacer"></div>
+    <button id="lib-free" class="ghost">Mode libre</button>
+    <label class="btn ghost" for="lib-file">Importer MusicXML ou MIDI</label>
+    <input id="lib-file" type="file" accept=".musicxml,.xml,.mxl,.mid,.midi" hidden>
+    <button id="lib-new" class="primary">Nouvelle partition</button>
+  </div>
+  <div id="lib-tags" class="chips"></div>
+  <div id="lib-list" class="cards"></div>
+</section>
+
+<!-- ÉDITEUR -->
+<section id="v-editor" class="view">
+  <div class="bar"><h2 id="ed-heading">Nouvelle partition</h2><div class="spacer"></div>
+    <button id="ed-cancel" class="ghost">Annuler</button><button id="ed-play" class="ghost">Écouter</button><button id="ed-save" class="primary">Enregistrer</button></div>
+  <div class="ed-grid">
+    <div class="field wide"><label for="ed-title">Titre</label><input id="ed-title" type="text" placeholder="Les Moulins de mon cœur"></div>
+    <div class="field"><label for="ed-tempo">Tempo (noires par minute)</label><input id="ed-tempo" type="number" min="20" max="240" value="80"></div>
+    <div class="field"><label for="ed-bpb">Temps par mesure</label><input id="ed-bpb" type="number" min="1" max="12" step="0.5" value="4"></div>
+    <div class="field wide"><label for="ed-tags">Étiquettes (séparées par des virgules)</label><input id="ed-tags" type="text" placeholder="Legrand, en cours"></div>
+  </div>
+  <div class="keys-wrap"><div id="ed-keys" class="keys"></div></div>
+  <div class="ed-tools">
+    <span class="lbl">Durée</span>
+    <div id="ed-durs" class="seg"></div>
+    <button id="ed-rest" class="ghost small">Silence</button>
+    <input id="ed-lyric" type="text" placeholder="Syllabe (facultatif)" class="small-input">
+    <button id="ed-undo" class="ghost small">Effacer la dernière</button>
+  </div>
+  <div class="field"><label for="ed-text">Notes</label>
+    <textarea id="ed-text" rows="6" spellcheck="false" placeholder="do3:1/Au do3/clair do3/de ré3/la mi3:2/lu- ré3/ne"></textarea></div>
+  <p id="ed-info" class="muted small"></p>
+  <ul id="ed-errors" class="errors"></ul>
+  <canvas id="ed-preview" class="preview"></canvas>
+  <details class="help"><summary>Comment écrire les notes</summary>
+    <p>Une note s'écrit <code>nom + octave</code>, puis éventuellement <code>:durée</code> et <code>/syllabe</code>. La durée est en temps (une noire vaut 1) et reste la même tant que tu ne la changes pas.</p>
+    <ul>
+      <li><code>la2</code>, <code>sol#2</code>, <code>sib2</code>, <code>ré3</code> ou en anglais <code>A2</code>, <code>G#2</code>, <code>Bb2</code>, <code>D3</code></li>
+      <li><code>do3:2</code> blanche, <code>do3:0.5</code> croche, <code>do3:1.5</code> noire pointée, <code>do3:1/3</code> triolet</li>
+      <li><code>-:2</code> un silence de deux temps</li>
+      <li><code>|</code> barre de mesure, ignorée, juste pour te repérer</li>
+      <li><code>mi3:2/lu-</code> ajoute la syllabe « lu- » sous la note ; <code>_</code> remplace une espace</li>
+    </ul>
+    <p>L'octave suit la notation scientifique : do4 est le do du milieu du piano, la3 est à 220 Hz, ta voix parlée tourne autour de fa2.</p>
+  </details>
+</section>
+
+<!-- PRATIQUE -->
+<section id="v-practice" class="view">
+  <div class="pr-head">
+    <div class="pr-title"><h2 id="pr-title">Mode libre</h2><p id="pr-about" class="muted small"></p></div>
+    <div class="readout" aria-live="off">
+      <div class="ro-note"><span id="ro-note">–</span><span id="ro-target" class="muted"></span></div>
+      <div class="meter"><div class="meter-zone"></div><div id="ro-needle" class="needle"></div></div>
+      <div class="ro-sub"><span id="ro-cents">écart –</span><span id="ro-hz">– Hz</span></div>
+    </div>
+  </div>
+  <div class="roll-wrap"><canvas id="roll"></canvas><div id="roll-msg" class="roll-msg"></div></div>
+  <div class="transport">
+    <button id="pr-play" class="primary big" aria-label="Lancer">▶ Lancer</button>
+    <label class="toggle"><input id="pr-rec" type="checkbox"><span>Enregistrer</span></label>
+    <label class="toggle score-only"><input id="pr-loop" type="checkbox"><span>Boucle</span></label>
+    <div class="score-only bars">Mesures <input id="pr-from" type="number" min="1" value="1"> à <input id="pr-to" type="number" min="1" value="1"></div>
+    <div class="level" title="Niveau du micro"><div id="pr-level"></div></div>
+  </div>
+  <div class="controls score-only">
+    <div class="ctl">
+      <span class="lbl">Transposition</span>
+      <div class="stepper"><button id="pr-down" aria-label="Baisser d'un demi-ton">−</button><output id="pr-shift">0</output><button id="pr-up" aria-label="Monter d'un demi-ton">+</button></div>
+      <span id="pr-shift-lbl" class="muted small">ton original</span>
+      <div class="row-btns"><button id="pr-fit" class="ghost small">Caler sur ma voix</button><button id="pr-suggest" class="ghost small">Tonalité conseillée</button><button id="pr-oct-down" class="ghost small">−1 octave</button><button id="pr-oct-up" class="ghost small">+1 octave</button></div>
+    </div>
+    <div class="ctl">
+      <span class="lbl">Tempo <output id="pr-tempo-lbl">100 %</output></span>
+      <input id="pr-tempo" type="range" min="40" max="150" step="5" value="100">
+    </div>
+    <div class="ctl">
+      <span class="lbl">Guide sonore</span>
+      <select id="pr-guide"><option value="none">Aucun</option><option value="start" selected>Note de départ</option><option value="full">Toute la mélodie</option></select>
+      <input id="pr-vol" type="range" min="0" max="1" step="0.05" value="0.5" aria-label="Volume du guide">
+      <label class="toggle"><input id="pr-metro" type="checkbox"><span>Métronome</span></label>
+    </div>
+    <div class="ctl">
+      <span class="lbl">Zoom</span>
+      <input id="pr-zoom" type="range" min="0.4" max="2.5" step="0.1" value="1">
+    </div>
+  </div>
+  <p class="muted small tip">Avec le guide sonore, mets un casque : sinon le micro entend aussi le guide.</p>
+  <div id="pr-result"></div>
+</section>
+
+<!-- PRISES -->
+<section id="v-takes" class="view">
+  <div class="bar"><h2>Prises</h2><div class="spacer"></div><select id="tk-filter"></select></div>
+  <div id="tk-replay" class="replay" hidden>
+    <div class="bar"><h3 id="rp-title"></h3><div class="spacer"></div><button id="rp-close" class="ghost small">Fermer</button></div>
+    <div class="roll-wrap short"><canvas id="rp-roll"></canvas></div>
+    <div class="transport">
+      <button id="rp-play" class="primary">▶ Réécouter</button>
+      <input id="rp-pos" type="range" min="0" max="1" step="0.01" value="0" aria-label="Position">
+      <span id="rp-time" class="muted small tnum"></span>
+    </div>
+    <audio id="rp-audio" preload="auto"></audio>
+    <div id="rp-bilan"></div>
+  </div>
+  <div id="tk-list" class="list"></div>
+</section>
+
+<!-- PROGRÈS -->
+<section id="v-progress" class="view">
+  <div class="bar"><h2>Progrès</h2><div class="spacer"></div><select id="pg-score"></select><button id="pg-csv" class="ghost">Exporter en CSV</button></div>
+  <div id="pg-tiles" class="tiles"></div>
+  <div class="panel"><h3>Score de justesse par prise</h3><canvas id="pg-chart" class="chart"></canvas></div>
+  <div class="two">
+    <div class="panel"><h3>Ce qui revient le plus</h3><ul id="pg-insights" class="insights"></ul></div>
+    <div class="panel"><h3>Notes les plus difficiles</h3><div id="pg-hard"></div></div>
+  </div>
+</section>
+
+<!-- PROFIL -->
+<section id="v-profile" class="view">
+  <h2>Profil vocal</h2>
+  <p class="muted">Ces limites servent à conseiller la tonalité et à colorer les notes trop graves, trop aiguës ou dans ta zone de passage.</p>
+  <div class="pf-grid" id="pf-fields"></div>
+  <div class="panel">
+    <h3>Test de tessiture en direct</h3>
+    <p class="muted small">Tiens chaque note une demi-seconde. L'app garde la plus grave et la plus aiguë que tu as vraiment tenues. Fais un passage en voix de poitrine, puis un en voix de tête.</p>
+    <div class="range-test">
+      <button id="rt-start" class="primary">Démarrer</button>
+      <div class="rt-live"><span class="lbl">Maintenant</span><b id="rt-now">–</b></div>
+      <div class="rt-live"><span class="lbl">Plus grave tenue</span><b id="rt-low">–</b></div>
+      <div class="rt-live"><span class="lbl">Plus aiguë tenue</span><b id="rt-high">–</b></div>
+      <button id="rt-chest" class="ghost small" disabled>Utiliser pour la voix de poitrine</button>
+      <button id="rt-head" class="ghost small" disabled>Utiliser pour la voix de tête</button>
+      <button id="rt-reset" class="ghost small">Remettre à zéro</button>
+    </div>
+  </div>
+  <div class="panel">
+    <h3>Vérifier le micro</h3>
+    <p class="muted small">L'app joue cinq notes graves par les haut-parleurs (sans casque) et vérifie qu'elle les entend à la bonne hauteur. Si les notes les plus graves sont mal lues, éloigne un peu le micro ou change de micro.</p>
+    <button id="mt-start" class="ghost">Lancer la vérification</button>
+    <div id="mt-result"></div>
+  </div>
+  <div class="panel">
+    <h3>Réglages</h3>
+    <div class="pf-grid">
+      <div class="field"><label for="st-naming">Noms des notes</label><select id="st-naming"><option value="fr">do ré mi</option><option value="en">C D E</option></select></div>
+      <div class="field"><label for="st-flats">Altérations</label><select id="st-flats"><option value="0">dièses (la♯)</option><option value="1">bémols (si♭)</option></select></div>
+      <div class="field"><label for="st-a4">Diapason la4 (Hz)</label><input id="st-a4" type="number" min="415" max="466" step="1"></div>
+      <div class="field"><label for="st-fmin">Note la plus grave détectée (Hz)</label><input id="st-fmin" type="number" min="40" max="120" step="1"></div>
+      <div class="field"><label for="st-gate">Seuil du micro (dB)</label><input id="st-gate" type="number" min="-80" max="-20" step="1"></div>
+      <div class="field"><label for="st-lat">Compensation de latence (ms)</label><input id="st-lat" type="number" min="0" max="300" step="5"></div>
+    </div>
+    <p class="muted small">Les octaves suivent la notation scientifique, où le la du diapason à 440 Hz s'appelle la4 (certains livres français l'appellent la3). Baisse le seuil du micro si ta voix n'est pas détectée quand tu chantes doucement, monte-le si l'app trace du bruit dans les silences.</p>
+  </div>
+  <div class="panel">
+    <h3>Sauvegarde</h3>
+    <p class="muted small">Tout reste dans ce navigateur. Exporte une sauvegarde pour la garder ailleurs ou passer sur un autre appareil.</p>
+    <div class="row-btns">
+      <label class="toggle"><input id="bk-audio" type="checkbox"><span>Inclure l'audio des prises</span></label>
+      <button id="bk-export" class="ghost">Exporter une sauvegarde</button>
+      <label class="btn ghost" for="bk-file">Importer une sauvegarde</label><input id="bk-file" type="file" accept=".json" hidden>
+    </div>
+    <p id="bk-info" class="muted small"></p>
+  </div>
+</section>
+</main>
+
+<dialog id="imp-dlg">
+  <form method="dialog" class="dlg">
+    <h3>Importer une partition</h3>
+    <div class="field"><label for="imp-title">Titre</label><input id="imp-title" type="text"></div>
+    <div class="field"><label for="imp-part">Partie à garder</label><select id="imp-part"></select></div>
+    <div class="field"><label for="imp-oct">Octave</label><select id="imp-oct"><option value="-24">−2 octaves</option><option value="-12">−1 octave</option><option value="0" selected>telle quelle</option><option value="12">+1 octave</option></select></div>
+    <p id="imp-info" class="muted small"></p>
+    <canvas id="imp-preview" class="preview"></canvas>
+    <div class="row-btns end"><button value="cancel" class="ghost">Annuler</button><button id="imp-ok" value="ok" class="primary">Ajouter à la bibliothèque</button></div>
+  </form>
+</dialog>
+
+<div id="toast" class="toast" role="status" hidden></div>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
